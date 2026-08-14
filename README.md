@@ -5,13 +5,13 @@ pull requests, so nobody has to drag cards.
 
 Public on purpose: on the free plan a **private** repository's reusable workflows cannot be called
 from other repositories. Nothing here is sensitive — workflow YAML only, no secrets, no company
-data. Related: [SDLC §7.8 Automation](https://github.com/APPCO-PTE-LTD/.github-private/blob/main/SDLC/07-github-projects.md).
+data. The design rationale lives in our internal SDLC, §7.8 Automation (organization members only).
 
 ## What is here
 
-| Workflow | Trigger in the caller | What it does |
-|---|---|---|
-| [`add-to-project.yml`](.github/workflows/add-to-project.yml) | issue or PR opened | Adds the item to the product's Project |
+| Workflow                                                               | Trigger in the caller        | What it does                                          |
+| ---------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------- |
+| [`add-to-project.yml`](.github/workflows/add-to-project.yml)           | issue or PR opened           | Adds the item to the product's Project                |
 | [`set-issue-in-review.yml`](.github/workflows/set-issue-in-review.yml) | PR opened / ready for review | Moves the issue the PR closes to `Status = In Review` |
 
 Everything else on the board is handled by the Project's **built-in** workflows — item added, item
@@ -41,12 +41,12 @@ Calls are pinned to `@v1`. §6.11 forbids floating refs — never change these t
 
 Create a **fine-grained personal access token**:
 
-| Setting | Value |
-|---|---|
-| Resource owner | `APPCO-PTE-LTD` |
-| Organization permissions | `Projects` → **Read and write** |
-| Repository permissions | `Issues` → Read · `Pull requests` → Read · `Metadata` → Read |
-| Expiry | 1 year — put the rotation date in a calendar |
+| Setting                  | Value                                                        |
+| ------------------------ | ------------------------------------------------------------ |
+| Resource owner           | `APPCO-PTE-LTD`                                              |
+| Organization permissions | `Projects` → **Read and write**                              |
+| Repository permissions   | `Issues` → Read · `Pull requests` → Read · `Metadata` → Read |
+| Expiry                   | 1 year — put the rotation date in a calendar                 |
 
 Store it as a **repository** secret named `PROJECT_AUTOMATION_TOKEN` in each repository that syncs
 to a board.
