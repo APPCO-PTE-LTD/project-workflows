@@ -1,0 +1,29 @@
+name: Add to project
+
+# Reusable. Adds the triggering issue or pull request to a product's GitHub Project.
+#
+# Why this exists: the built-in "Auto-add" project workflow is limited to ONE per project
+# on the free plan (5 on Team, 20 on Enterprise), and a product has ~4 repositories.
+# See SDLC §7.8.
+
+on:
+  workflow_call:
+    inputs:
+      project-url:
+        description: 'e.g. https://github.com/orgs/APPCO-PTE-LTD/projects/1'
+        required: true
+        type: string
+    secrets:
+      project-token:
+        description: 'PAT or App token with organization Projects: read and write'
+        required: true
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to the v2.0.0 tag's commit SHA — §6.11 forbids floating refs.
+      - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        with:
+          project-url: ${{ inputs.project-url }}
+          github-token: ${{ secrets.project-token }}

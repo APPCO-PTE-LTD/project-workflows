@@ -1,0 +1,107 @@
+name: Set linked issue to In Review
+
+# Reusable. When a pull request opens, moves the issue it closes to Status = "In Review"
+# on the product's Project board.
+#
+# Why this exists: no built-in project workflow covers it. "PR merged" and "item closed" are
+# built in; "PR opened" is not, and "In Review" is the status that goes stale fastest.
+# SDLC §7.8 gives this as its worked example, and "PR opened" is an unambiguous transition.
+#
+# Relies on the PR body linking its issue ("Closes #123") — the §19.7 PR template convention.
+
+on:
+  workflow_call:
+    inputs:
+      project-url:
+        description: 'e.g. https://github.com/orgs/APPCO-PTE-LTD/projects/1'
+        required: true
+        type: string
+      status:
+        description: 'Status option name to set'
+        required: false
+        type: string
+        default: 'In Review'
+    secrets:
+      project-token:
+        description: 'PAT or App token with organization Projects: read and write'
+        required: true
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move linked issues
+        env:
+          GH_TOKEN: ${{ secrets.project-token }}
+          PROJECT_NUMBER: ${{ inputs.project-url }}
+          TARGET_STATUS: ${{ inputs.status }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          PROJECT_NUMBER="${PROJECT_NUMBER##*/}"
+
+          # Issues this PR closes, with their project items.
+          items=$(gh api graphql -f owner="$OWNER" -f repo="$REPO" -F pr="$PR" -f query='
+            query($owner:String!, $repo:String!, $pr:Int!) {
+              repository(owner:$owner, name:$repo) {
+                pullRequest(number:$pr) {
+                  closingIssuesReferences(first:20) {
+                    nodes {
+                      number
+                      projectItems(first:20) {
+                        nodes { id project { id number } }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq "
+              .data.repository.pullRequest.closingIssuesReferences.nodes[]
+              | .number as \$n
+              | .projectItems.nodes[]
+              | select(.project.number == $PROJECT_NUMBER)
+              | \"\(.project.id) \(.id) \(\$n)\"
+            ")
+
+          if [ -z "$items" ]; then
+            echo "No linked issue on project #$PROJECT_NUMBER — nothing to do."
+            echo "(If you expected one, check the PR body says 'Closes #<n>'.)"
+            exit 0
+          fi
+
+          # ponytail: re-reads the Status field per item. Fine at one or two linked issues;
+          # hoist the lookup out of the loop if a PR ever closes a dozen.
+          while read -r project_id item_id issue_number; do
+            read -r field_id option_id <<<"$(gh api graphql \
+              -f project="$project_id" -f status="$TARGET_STATUS" -f query='
+              query($project:ID!, $status:String!) {
+                node(id:$project) {
+                  ... on ProjectV2 {
+                    field(name:"Status") {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        options(names:[$status]) { id }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field | "\(.id) \(.options[0].id // "")"')"
+
+            if [ -z "$option_id" ]; then
+              echo "::error::Project #$PROJECT_NUMBER has no Status option named '$TARGET_STATUS'"
+              exit 1
+            fi
+
+            gh api graphql -f project="$project_id" -f item="$item_id" \
+              -f field="$field_id" -f option="$option_id" -f query='
+              mutation($project:ID!, $item:ID!, $field:ID!, $option:String!) {
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$project, itemId:$item, fieldId:$field,
+                  value:{ singleSelectOptionId:$option }
+                }) { projectV2Item { id } }
+              }' >/dev/null
+
+            echo "Issue #$issue_number -> $TARGET_STATUS"
+          done <<<"$items"

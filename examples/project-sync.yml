@@ -1,0 +1,32 @@
+# Copy this file to .github/workflows/project-sync.yml in a product repository.
+#
+# Before it works:
+#   1. Replace <N> below with the product Project's number.
+#   2. Add a repository secret PROJECT_AUTOMATION_TOKEN (see this repo's README).
+#
+# Fork PRs do not receive secrets. That is fine for private org repositories, which have no
+# forks; if a repo ever takes outside contributions the `in-review` job will simply no-op.
+
+name: Project sync
+
+on:
+  issues:
+    types: [opened, transferred, reopened]
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  add:
+    uses: APPCO-PTE-LTD/project-workflows/.github/workflows/add-to-project.yml@v1
+    with:
+      project-url: https://github.com/orgs/APPCO-PTE-LTD/projects/<N>
+    secrets:
+      project-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+
+  in-review:
+    if: github.event_name == 'pull_request'
+    uses: APPCO-PTE-LTD/project-workflows/.github/workflows/set-issue-in-review.yml@v1
+    with:
+      project-url: https://github.com/orgs/APPCO-PTE-LTD/projects/<N>
+    secrets:
+      project-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
