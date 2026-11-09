@@ -8,6 +8,9 @@ name: Set linked issue to In Review
 # SDLC §7.8 gives this as its worked example, and "PR opened" is an unambiguous transition.
 #
 # Relies on the PR body linking its issue ("Closes #123") — the §19.7 PR template convention.
+#
+# Also called with `status: Testing` when a PR merges (see examples/project-sync.yml): the
+# built-in "PR merged" workflow moves only the PR's own card, not the issue it closes.
 
 on:
   workflow_call:

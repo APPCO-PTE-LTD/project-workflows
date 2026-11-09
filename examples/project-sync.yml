@@ -3,9 +3,12 @@
 # Before it works:
 #   1. Replace <N> below with the product Project's number.
 #   2. Add a repository secret PROJECT_AUTOMATION_TOKEN (see this repo's README).
+#   3. Turn OFF Settings -> General -> "Auto-close issues with merged linked pull requests".
+#      nightly is the default branch, so with it on, merging closes the issue and the board's
+#      "Item closed" workflow marks it Done before QA has seen it. QA closes it on a pass.
 #
 # Fork PRs do not receive secrets. That is fine for private org repositories, which have no
-# forks; if a repo ever takes outside contributions the `in-review` job will simply no-op.
+# forks; if a repo ever takes outside contributions the PR jobs will simply no-op.
 
 name: Project sync
 
@@ -13,10 +16,11 @@ on:
   issues:
     types: [opened, transferred, reopened]
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, closed]
 
 jobs:
   add:
+    if: github.event.action != 'closed'
     uses: APPCO-PTE-LTD/project-workflows/.github/workflows/add-to-project.yml@v1
     with:
       project-url: https://github.com/orgs/APPCO-PTE-LTD/projects/<N>
@@ -24,9 +28,20 @@ jobs:
       project-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
 
   in-review:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     uses: APPCO-PTE-LTD/project-workflows/.github/workflows/set-issue-in-review.yml@v1
     with:
       project-url: https://github.com/orgs/APPCO-PTE-LTD/projects/<N>
+    secrets:
+      project-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+
+  # PR merged -> the issue it closes goes to Testing. The built-in "PR merged" workflow
+  # only moves the PR's own card.
+  testing:
+    if: github.event.pull_request.merged == true
+    uses: APPCO-PTE-LTD/project-workflows/.github/workflows/set-issue-in-review.yml@v1
+    with:
+      project-url: https://github.com/orgs/APPCO-PTE-LTD/projects/<N>
+      status: Testing
     secrets:
       project-token: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
