@@ -1,0 +1,65 @@
+name: PR to Google Chat
+
+# Posts a card to the team Google Chat space when a PR is opened, reopened,
+# marked ready, merged or closed. Events for the same PR thread together.
+# The webhook URL is a secret; it is only passed to fetch(), never printed.
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, closed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post PR card
+        env:
+          WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+        run: |
+          [ -z "$WEBHOOK_URL" ] && { echo "::notice::No GOOGLE_CHAT_WEBHOOK set for this repo, skipping"; exit 0; }
+          node - <<'EOF'
+          const fs = require("fs");
+          const env = process.env;
+          const ev = JSON.parse(fs.readFileSync(env.GITHUB_EVENT_PATH, "utf8"));
+          const pr = ev.pull_request;
+          const repo = env.GITHUB_REPOSITORY;
+          const name = repo.split("/")[1];
+          const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const link = (url, text) => `<a href="${url}">${esc(text)}</a>`;
+
+          const action = ev.action === "closed"
+            ? (pr.merged ? "merged" : "closed without merging")
+            : ev.action === "ready_for_review" ? "ready for review" : ev.action;
+
+          const widgets = [
+            { decoratedText: { topLabel: "Author", text: link(pr.user.html_url, pr.user.login) } },
+            { decoratedText: { topLabel: "Branch", text: `${esc(pr.head.ref)} → ${esc(pr.base.ref)}` } },
+            { decoratedText: { topLabel: "Changes", text: `${pr.commits} commits · ${pr.changed_files} files · +${pr.additions} −${pr.deletions}` } },
+          ];
+          if (pr.merged) widgets.push({ decoratedText: { topLabel: "Merged by", text: esc(pr.merged_by?.login ?? "unknown") } });
+          widgets.push({ buttonList: { buttons: [
+            { text: "Open PR", onClick: { openLink: { url: pr.html_url } } },
+            { text: "Files changed", onClick: { openLink: { url: `${pr.html_url}/files` } } },
+          ] } });
+
+          const body = {
+            thread: { threadKey: `${repo}#${pr.number}` },
+            cardsV2: [{
+              cardId: `pr-${pr.number}`,
+              card: {
+                header: { title: `PR #${pr.number} ${action} · ${name}`, subtitle: pr.title },
+                sections: [{ widgets }],
+              },
+            }],
+          };
+
+          (async () => {
+            const res = await fetch(`${env.WEBHOOK_URL}&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`, {
+              method: "POST",
+              headers: { "content-type": "application/json; charset=UTF-8" },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(`Google Chat rejected the card: ${res.status} ${await res.text()}`);
+            console.log("Posted PR card.");
+          })().catch((e) => { console.log(`::error::${e.message}`); process.exit(1); });
+          EOF

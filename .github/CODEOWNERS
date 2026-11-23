@@ -1,0 +1,3 @@
+# Shared repository: only Technical Leads approve PRs into nightly.
+# Merging into nightly is restricted to the same team by branch protection.
+*  @APPCO-PTE-LTD/technical-lead
